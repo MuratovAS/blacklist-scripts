@@ -5,31 +5,35 @@
 # shell syntax:  "$URLS [SETNAME|]new_url"
 URLS=""
 
-# FireHOL adUser Blocklists that track abusers                          [24h] (includes: botscout_1d cleantalk_new_1d cleantalk_updated_1d php_commenters_1d php_dictionary_1d php_harvesters_1d php_spammers_1d stopforumspam_1d)
-URLS="$URLS firehol-ad|https://iplists.firehol.org/files/firehol_abusers_1d.netset"
-# FireHOL level2 Blocklists that track attacks, during about the last   [48h] (includes: blocklist_de dshield_1d  greensnow)
-URLS="$URLS firehol-l2|https://iplists.firehol.org/files/firehol_level2.netset"
-# FireHOL iblocklist
-URLS="$URLS firehol-ibl|https://iplists.firehol.org/files/iblocklist_ciarmy_malicious.netset"
-
-# EmergingThreats lists offensive IPs such as botnet command servers
-URLS="$URLS emergingthreats.net|https://rules.emergingthreats.net/fwrules/emerging-Block-IPs.txt"    
-# cinsscore badguys
-URLS="$URLS cinsscore.com|https://cinsscore.com/list/ci-badguys.txt"
-
-# FireHOL blocklist.net.ua
-URLS="$URLS firehol-ua|https://iplists.firehol.org/files/blocklist_net_ua.ipset"
-
 # FireHOL level1 A firewall blacklist composed from IP lists                  (includes: bambenek_c2 dshield feodo fullbogons spamhaus_drop spamhaus_edrop sslbl ransomware_rw)
 # WARNING! firehol-l1 list includes local and private IP ranges 
 URLS="$URLS firehol-l1|https://iplists.firehol.org/files/firehol_level1.netset"
+
+# FireHOL level2 Blocklists that track attacks, during about the last   [48h] (includes: blocklist_de dshield_1d  greensnow)
+URLS="$URLS firehol-l2|https://iplists.firehol.org/files/firehol_level2.netset"
 
 # FireHOL level3 Blocklists that track attacks, spyware, viruses        [30d] (includes: bruteforceblocker ciarmy dshield_30d dshield_top_1000 malc0de maxmind_proxy_fraud myip shunlist snort_ipfilter sslbl_aggressive talosintel_ipfilter vxvault)
 # WARNING! firehol-l3 list includes github
 # URLS="$URLS firehol-l3|https://iplists.firehol.org/files/firehol_level3.netset"
 
+# FireHOL iblocklist
+URLS="$URLS firehol-ibl|https://iplists.firehol.org/files/iblocklist_ciarmy_malicious.netset"
+
+# EmergingThreats lists offensive IPs such as botnet command servers
+URLS="$URLS emergingthreats.net|https://rules.emergingthreats.net/fwrules/emerging-Block-IPs.txt"    
+
+# Cinsscore badguys
+URLS="$URLS cinsscore.com|https://cinsscore.com/list/ci-badguys.txt"
+
+# FireHOL adUser Blocklists that track abusers                          [24h] (includes: botscout_1d cleantalk_new_1d cleantalk_updated_1d php_commenters_1d php_dictionary_1d php_harvesters_1d php_spammers_1d stopforumspam_1d)
+URLS="$URLS firehol-ad|https://iplists.firehol.org/files/firehol_abusers_1d.netset"
+
+# FireHOL blocklist.net.ua
+URLS="$URLS firehol-ua|https://iplists.firehol.org/files/blocklist_net_ua.ipset"
+
+
 enable_whitelist () {
-    # clean local and private ip
+    # remove local and private ip
     sed -i '/192.88.99.0\/24/d' ${1}
     sed -i '/240.0.0.0\/4/d'    ${1}
     sed -i '/224.0.0.0\/4/d'    ${1}
@@ -47,21 +51,21 @@ enable_whitelist () {
 #################################################################################
 
 # iptables logging limit
-# LIMIT="10/minute"
+LIMIT="10/minute"
 
 link_set () {
   # if [ "$3" = "DROP" ]; then
       if ! iptables -nL | grep -qE "^DROP.*\s+match-set $2\s+.*$"; then
-        # if [ "TODO" = "log" ]; then
-        #     iptables -A "$1" -m set --match-set "$2" src,dst -m limit --limit "$LIMIT" -j LOG --log-prefix "DROP $2 "
-        # fi
+        if [ "$4" = "log" ]; then
+            iptables -A "$1" -m set --match-set "$2" src,dst -m limit --limit "$LIMIT" -j LOG --log-prefix "DROP $2 "
+        fi
         iptables -A "$1" -m set --match-set "$2" src -j DROP
         iptables -A "$1" -m set --match-set "$2" dst -j DROP
       fi
   # fi  
   # if [ "$3" = "ACCEPT" ]; then
   #   if ! iptables -nL | grep -qE "^ACCEPT.*\s+match-set $2\s+.*$"; then
-  #     # if [ "TODO" = "log" ]; then
+  #     # if [ "$4" = "log" ]; then
   #     #     iptables -A "$1" -m set --match-set "$2" src,dst -m limit --limit "$LIMIT" -j LOG --log-prefix "ACCEPT $2 "
   #     # fi
   #     iptables -A "$1" -m set --match-set "$2" src -j ACCEPT
@@ -123,7 +127,7 @@ fi
 # if ! ipset list | grep -q "Name: ${set_name}"; then
 #     ipset create "${set_name}" hash:net
 # fi
-# link_set "${blocklist_chain_name}" "${set_name}" "ACCEPT" 
+# link_set "${blocklist_chain_name}" "${set_name}" "ACCEPT" "$1"
 # collect_set "${set_name}"
 
 # create the "manual" blacklist set
@@ -133,7 +137,7 @@ set_name="manual-blacklist"
 if ! ipset list | grep -q "Name: ${set_name}"; then
     ipset create "${set_name}" hash:net
 fi
-link_set "${blocklist_chain_name}" "${set_name}" "DROP"
+link_set "${blocklist_chain_name}" "${set_name}" "DROP" "$1"
 collect_set "${set_name}"
 
 init_temp_files () {
@@ -163,7 +167,7 @@ do
     fi
     collect_set "$set_name"
 
-    if ! curl --fail -L -v -s ${COMPRESS_OPT} -k -H 'Accept: text/plain' "$url" >"${unsorted_blocklist}" 2>"${headers}"; then
+    if ! curl --fail -m 60 -L -v -s ${COMPRESS_OPT} -k -H 'Accept: text/plain' "$url" >"${unsorted_blocklist}" 2>"${headers}"; then
       prune_temp_files
       continue
     fi
@@ -175,7 +179,7 @@ do
         fi
     fi
     
-    cat ${headers} | grep ":path:"
+    cat ${headers} | grep "GET /"
     
     # clean local and private ip
     enable_whitelist ${unsorted_blocklist}
@@ -214,7 +218,7 @@ do
     # actually execute the set update
     ipset -! -q restore < "${new_set_file}"
 
-    link_set "${blocklist_chain_name}" "${set_name}" "DROP"
+    link_set "${blocklist_chain_name}" "${set_name}" "DROP" "$1"
     prune_temp_files
 done
 # escape special chars from set_names excluding '|'
